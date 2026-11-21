@@ -1,15 +1,6 @@
-# ============================================================
-# WORKFLOW "MỞ ZIP" — cài MỘT LẦN DUY NHẤT vào .github/workflows/build.yml
-# Sau đó mỗi lần ra bản mới chỉ cần up đúng 1 file *-source.zip lên repo
-# (bằng điện thoại cũng được), workflow tự mở zip ra cây thư mục rồi build.
-# Áp dụng cho mọi tweak đóng gói dạng zip nguồn của Quoc
-# (ChargeGuard, AppInfoPress, TweakPacker, GhostModeHome, WaveToSilence...).
-# ============================================================
-name: Build from source zip
+name: Build ZaloUnseen
 on:
   push:
-    paths:
-      - '*-source.zip'
   workflow_dispatch:
 
 jobs:
@@ -31,16 +22,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Mở zip nguồn ra cây thư mục
+      - name: Chuẩn bị nguồn (mở zip nếu cần)
         run: |
-          ZIP=$(ls *-source.zip | sort -V | tail -n 1)
-          if [ -z "$ZIP" ]; then echo "Không thấy file *-source.zip nào trong repo"; exit 1; fi
-          echo "Đang mở: $ZIP"
-          rm -rf _src && mkdir _src
-          unzip -o "$ZIP" -d _src
-          cp -a _src/. .
-          rm -rf _src
-          ls
+          echo "== Trong repo đang có =="
+          ls -la
+          if [ ! -f Makefile ]; then
+            ZIP=$(ls *-source.zip 2>/dev/null | sort -V | tail -n 1)
+            echo "Chưa có cây nguồn, mở file nén: $ZIP"
+            if [ -z "$ZIP" ]; then echo "LỖI: repo không có Makefile và cũng không có file *-source.zip"; exit 1; fi
+            rm -rf _src && mkdir _src
+            unzip -o "$ZIP" -d _src
+            cp -a _src/. .
+            rm -rf _src
+            echo "== Sau khi mở nén =="
+            ls -la
+          fi
 
       - name: Cài công cụ
         run: |
@@ -59,9 +55,6 @@ jobs:
           cp -R /tmp/sdks/*.sdk $THEOS/sdks/ || true
           ls $THEOS/sdks
 
-      - name: Sửa quyền script cài đặt (nếu dự án có)
-        run: chmod 755 layout/DEBIAN/postinst layout/DEBIAN/prerm 2>/dev/null || true
-
       - name: Build
         run: |
           if [ -n "${{ matrix.scheme }}" ]; then export THEOS_PACKAGE_SCHEME=${{ matrix.scheme }}; fi
@@ -69,5 +62,5 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: deb-${{ matrix.name }}
+          name: ZaloUnseen-1.0.0-${{ matrix.name }}
           path: packages/*.deb
