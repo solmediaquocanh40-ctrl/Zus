@@ -1,0 +1,50 @@
+name: Build ZaloUnseen
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: rootful
+            theos: theos/theos
+            scheme: ""
+          - name: rootless
+            theos: theos/theos
+            scheme: rootless
+          - name: roothide
+            theos: roothide/theos
+            scheme: roothide
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cài công cụ
+        run: |
+          brew install ldid dpkg make
+          echo "$(brew --prefix make)/libexec/gnubin" >> $GITHUB_PATH
+
+      - name: Cài Theos (${{ matrix.theos }})
+        run: |
+          git clone --recursive --depth=1 https://github.com/${{ matrix.theos }}.git $HOME/theos
+          echo "THEOS=$HOME/theos" >> $GITHUB_ENV
+
+      - name: Tải SDK (có private framework)
+        run: |
+          git clone --depth=1 https://github.com/theos/sdks.git /tmp/sdks
+          rm -rf $THEOS/sdks && mkdir -p $THEOS/sdks
+          cp -R /tmp/sdks/*.sdk $THEOS/sdks/ || true
+          ls $THEOS/sdks
+
+      - name: Build
+        run: |
+          if [ -n "${{ matrix.scheme }}" ]; then export THEOS_PACKAGE_SCHEME=${{ matrix.scheme }}; fi
+          make package FINALPACKAGE=1
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ZaloUnseen-1.0.0-${{ matrix.name }}
+          path: packages/*.deb
