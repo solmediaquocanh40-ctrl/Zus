@@ -27,9 +27,9 @@ jobs:
           echo "== Trong repo đang có =="
           ls -la
           if [ ! -f Makefile ]; then
-            ZIP=$(ls *-source.zip 2>/dev/null | sort -V | tail -n 1)
+            ZIP=$(ls *.zip 2>/dev/null | sort -V | tail -n 1)
             echo "Chưa có cây nguồn, mở file nén: $ZIP"
-            if [ -z "$ZIP" ]; then echo "LỖI: repo không có Makefile và cũng không có file *-source.zip"; exit 1; fi
+            if [ -z "$ZIP" ]; then echo "LỖI: repo không có Makefile và cũng không có file .zip nào"; exit 1; fi
             rm -rf _src && mkdir _src
             unzip -o "$ZIP" -d _src
             cp -a _src/. .
