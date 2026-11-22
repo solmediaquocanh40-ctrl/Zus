@@ -22,5 +22,6 @@
 #define ZU_DIAG_BLOCKED_TYPE @"diag_blockedTyping"
 #define ZU_DIAG_LAST         @"diag_lastEvent"
 #define ZU_DIAG_SCAN         @"diag_lastScan"
+#define ZU_DIAG_CTOR         @"diag_ctor"
 
 #endif
