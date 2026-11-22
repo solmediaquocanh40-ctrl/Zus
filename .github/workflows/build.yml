@@ -60,6 +60,11 @@ jobs:
           if [ -n "${{ matrix.scheme }}" ]; then export THEOS_PACKAGE_SCHEME=${{ matrix.scheme }}; fi
           make package FINALPACKAGE=1
 
+      - name: Đổi tên .deb kèm scheme (tránh cài nhầm bản)
+        run: |
+          for f in packages/*.deb; do mv "$f" "packages/$(basename "$f" .deb)-${{ matrix.name }}.deb"; done
+          ls -la packages/
+
       - uses: actions/upload-artifact@v4
         with:
           name: ZaloUnseen-1.0.0-${{ matrix.name }}
