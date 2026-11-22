@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>items</key>
+	<array>
+		<dict>
+			<key>cell</key>
+			<string>PSGroupCell</string>
+			<key>footerText</key>
+			<string>Đọc tin nhắn Zalo mà phía bên kia không thấy “đã xem”: đoạn chat vẫn giữ chữ đậm như chưa đọc. Kèm tắt luôn “đang nhập...”. Áp dụng cho mọi người và mọi nhóm, chỉ trên máy này.</string>
+			<key>label</key>
+			<string>ZaloUnseen</string>
+		</dict>
+		<dict>
+			<key>PostNotification</key>
+			<string>com.anhdang.zalounseen/prefsChanged</string>
+			<key>cell</key>
+			<string>PSSwitchCell</string>
+			<key>default</key>
+			<true/>
+			<key>defaults</key>
+			<string>com.anhdang.zalounseen</string>
+			<key>key</key>
+			<string>enabled</string>
+			<key>label</key>
+			<string>Bật ZaloUnseen</string>
+		</dict>
+		<dict>
+			<key>PostNotification</key>
+			<string>com.anhdang.zalounseen/prefsChanged</string>
+			<key>cell</key>
+			<string>PSSwitchCell</string>
+			<key>default</key>
+			<true/>
+			<key>defaults</key>
+			<string>com.anhdang.zalounseen</string>
+			<key>key</key>
+			<string>unseen</string>
+			<key>label</key>
+			<string>Chặn “đã xem” khi đọc tin</string>
+		</dict>
+		<dict>
+			<key>PostNotification</key>
+			<string>com.anhdang.zalounseen/prefsChanged</string>
+			<key>cell</key>
+			<string>PSSwitchCell</string>
+			<key>default</key>
+			<true/>
+			<key>defaults</key>
+			<string>com.anhdang.zalounseen</string>
+			<key>key</key>
+			<string>hideTyping</string>
+			<key>label</key>
+			<string>Tắt “đang nhập...”</string>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSGroupCell</string>
+			<key>footerText</key>
+			<string>Log đầy đủ nằm trong thư mục Documents của Zalo: Filza → Apps → Zalo → Documents → ZaloUnseen.log. Gửi file đó cho mình khi cần kiểm tra.</string>
+			<key>label</key>
+			<string>Gỡ lỗi</string>
+		</dict>
+		<dict>
+			<key>PostNotification</key>
+			<string>com.anhdang.zalounseen/prefsChanged</string>
+			<key>cell</key>
+			<string>PSSwitchCell</string>
+			<key>default</key>
+			<true/>
+			<key>defaults</key>
+			<string>com.anhdang.zalounseen</string>
+			<key>key</key>
+			<string>debug</string>
+			<key>label</key>
+			<string>Ghi log gỡ lỗi</string>
+		</dict>
+		<dict>
+			<key>action</key>
+			<string>showDiag</string>
+			<key>cell</key>
+			<string>PSButtonCell</string>
+			<key>label</key>
+			<string>Xem trạng thái dò</string>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSGroupCell</string>
+			<key>footerText</key>
+			<string>ZaloUnseen 1.0.0 • com.anhdang.zalounseen</string>
+		</dict>
+	</array>
+	<key>title</key>
+	<string>ZaloUnseen</string>
+</dict>
+</plist>
