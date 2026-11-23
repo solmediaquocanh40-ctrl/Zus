@@ -10,8 +10,6 @@
 		<string>PSLinkCell</string>
 		<key>detail</key>
 		<string>ZURootListController</string>
-		<key>icon</key>
-		<string></string>
 		<key>isController</key>
 		<true/>
 		<key>label</key>

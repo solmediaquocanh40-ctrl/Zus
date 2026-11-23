@@ -1,4 +1,4 @@
-// ZURootListController 1.0.1 — trang Cài đặt của ZaloUnseen.
+// ZURootListController 1.0.2 — trang Cài đặt của ZaloUnseen.
 #import "ZURootListController.h"
 #import "ZUShared.h"
 

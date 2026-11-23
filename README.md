@@ -1,4 +1,9 @@
-# ZaloUnseen 1.0.1
+# ZaloUnseen 1.0.2
+
+## Có gì mới ở 1.0.2
+
+- Sửa lỗi trang Cài đặt báo thiếu file: file khai báo mục Cài đặt (PreferenceLoader) có một khoá icon rỗng mà các tweak đang chạy tốt không hề có — đã gỡ bỏ, đưa file về đúng khuôn mẫu.
+
 
 ## Có gì mới ở 1.0.1
 
