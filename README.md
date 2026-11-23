@@ -1,11 +1,19 @@
-# ZaloUnseen 1.0.4
+# ZaloUnseen 1.0.5
 
-## Có gì mới ở 1.0.4
+## Có gì mới ở 1.0.5
 
-- **Đổi hẳn cơ chế móc: danh sách trắng cố định 21 hàm.** Log máy thật của 1.0.3 phơi bày gốc lỗi làm Zalo văng: cơ chế dò theo mẫu khớp chuỗi con đã nổ tung vì chữ "read" nằm trong "thread", "already", "ready", "reader" — 1.162 ứng viên lọt lưới, 877 hàm bị móc, phần lớn là hàm gán dữ liệu (setThreadId:...) khắp app; chặn các hàm gán đó phá vỡ trạng thái của app ngay khi mở.
-- 1.0.4 không quét, không khớp mẫu nữa: chỉ móc đúng các hàm GỬI trạng thái mà log 1.0.3 đã xác nhận có thật trên Zalo 26.11.02.1 — lớp gửi đã xem (ChatSendSeenDataManager: sendSeenWithChatEntity:, sendSeenServer, forceSendSeenServer...; ChatSocketCmdHelper: sendSeenChatACK, sendSeenGroupChatACK, các hàm delivered kèm cờ isSeen, sendGetChatSeen/sendGetGroupSeen), lớp cập nhật đã xem trong máy (ConversationModel: updateLastSeenWithMessage:type:, setLastSeenObject:... — giữ chữ đậm trong danh sách chat), và hàm gửi đang nhập 5 tham số sendStatusTyping:... của ChatSocketCmdHelper (hàm thay thế riêng, kiểm tra mã kiểu nghiêm ngặt trước khi móc).
+- **Sửa đúng gốc vụ văng khi mở đoạn chat của 1.0.4.** File báo cáo sập (.ips) cộng với giải mã đúng file .deb đã cài chỉ đích danh: hàm thay thế chung của tweak khai tham số kiểu `id`, trình biên dịch (ARC) tự chèn lệnh retain cho cả hai tham số ngay khi vào hàm; hàm nào của Zalo có tham số thứ hai là số nguyên (như `type:` của ConversationModel) thì lệnh retain đó đọc con số như một địa chỉ bộ nhớ và sập tại chỗ — chết trước khi kịp chặn hay ghi log. Đó là lý do log 1.0.4 trống ở đúng đoạn mở chat và phần "đã xem" tưởng như không đi qua cửa nào. 1.0.5 khai mọi tham số của hàm thay thế là `__unsafe_unretained`/`void*`: không còn lệnh retain nào trên đường đi của tham số nữa.
+- **Danh sách móc 27 hàm:** giữ 19 hàm đã kiểm chứng của 1.0.4 (bỏ 2 hàm sendGetChatSeen/sendGetGroupSeen — chúng lấy danh sách người đã xem tin của CHÍNH mình, không thuộc luồng cần chặn), thêm lớp màn hình chat (BaseChatTVC, 4 hàm) và lớp xử lý (BaseChatProcessor) — các cửa phát sinh "đã xem" ngay khi mở đoạn chat — cùng addChatSeenWithLastChatEntity: và cửa delivered 3 tham số. Riêng addChatSeenWithLastChatEntity: lấy từ bộ móc của ZaloTools, chưa có trong log máy thật: nếu Zalo không có hàm này, bộ lắp móc tự ghi log và bỏ qua, không ảnh hưởng gì.
+- **Đang nhập móc ở cả hai điểm:** ChatDataManager sendTypingWithType:... (4 tham số) và ChatSocketCmdHelper sendStatusTyping:... (5 tham số). Cổng kiểm tra mã kiểu nay bỏ qua các ký tự định tính (const/in/out...) — nhiều khả năng đó là lý do sendStatusTyping bị từ chối ở 1.0.4; từ bản này, hàm nào bị bỏ qua đều ghi rõ mã kiểu của nó vào log để vòng sau chỉnh đúng từng chữ.
+- **Log thêm dòng "lần đầu được gọi" cho từng cửa:** mở đoạn chat mà cửa nào chạy là log có bằng chứng ngay, kể cả khi cửa đó đang được chuyển tiếp — vòng thử này sẽ chỉ đích danh cửa còn rò, nếu còn.
 - Mỗi mục đều kiểm tra: class có thật không, hàm có thật không, số tham số có đúng kỳ vọng không, mã kiểu có an toàn không — sai bất kỳ điều nào thì ghi log và bỏ qua. Không đụng vào bất kỳ hàm nào khác của Zalo.
 - Giữ nguyên từ 1.0.3: filter đúng mã Zalo iOS vn.com.vng.zingalo (kèm com.vng.zalo dự phòng), entry Cài đặt không khoá icon, chẩn đoán trong trang Cài đặt.
+
+## Có gì mới ở 1.0.4 (bản đã build và thử trên máy)
+
+- **Đổi hẳn cơ chế móc: danh sách trắng cố định 21 hàm** thay cho dò theo mẫu của 1.0.3 (cơ chế cũ khớp chuỗi con "read" trong "thread/already/ready..." làm 877 hàm bị móc oan và Zalo văng ngay khi mở). 21 hàm phủ 3 lớp: quản lý + gửi (ChatSendSeenDataManager, 7 hàm), socket (ChatSocketCmdHelper: 2 hàm seen ACK, 4 hàm delivered, 2 hàm lấy danh sách đã xem), trạng thái trong máy (ConversationModel, 5 hàm), cộng 1 hàm đang nhập 5 tham số (sendStatusTyping — bị cổng kiểm tra mã kiểu từ chối nên chưa từng lắp được).
+- Kết quả thử trên máy: hết văng khi mở app, nhưng **vẫn văng khi ấn vào một đoạn chat** và **chưa chặn được đã xem** — gốc của cả hai hoá ra là một: hàm thay thế tự retain tham số (xem mục 1.0.5).
+- (Mục này trước đây mô tả một bản dự thảo 29 hàm kèm chốt tự bảo vệ — bản dự thảo đó chưa từng được build hay cài lên máy; đã huỷ bỏ.)
 
 
 
@@ -37,7 +45,7 @@
 
 ## Cách nó hoạt động (nói thẳng)
 
-Zalo là app đóng, không ai ngoài VNG biết chính xác hàm nào trong app phụ trách đánh dấu đã đọc. Bản này dùng cơ chế **dò + chặn**: khi Zalo chạy, tweak quét các class nằm trong chính gói Zalo, tìm những hàm khớp mẫu "đánh dấu/gửi/cập nhật + read/seen/typing", kiểm tra kiểu dữ liệu an toàn rồi mới móc vào. Hàm bị móc sẽ không được chạy khi tính năng đang bật — vì vậy trạng thái đã đọc không bị lật và máy chủ không nhận được sự kiện.
+Zalo là app đóng, không ai ngoài VNG biết chính xác hàm nào trong app phụ trách đánh dấu đã đọc. Bản này dùng cơ chế **danh sách trắng + chặn**: tweak chỉ móc đúng 27 hàm đã được kiểm chứng từ log máy thật (và đối chiếu bộ móc của một tweak cùng mục đích) — không quét, không khớp mẫu, không đụng vào bất kỳ hàm nào khác của Zalo. Hàm bị móc sẽ không được chạy khi tính năng đang bật — vì vậy trạng thái đã đọc không bị lật và máy chủ không nhận được sự kiện.
 
 Mọi ứng viên tìm thấy, móc nào thành công, lần chặn nào xảy ra đều được ghi vào log `ZaloUnseen.log` trong thư mục Documents của Zalo (xem bằng Filza → Apps → Zalo → Documents). Nếu bản này chưa chặn trúng chỗ trên phiên bản Zalo của bạn, gửi file log đó lại — vòng sau chỉnh đúng tên hàm thật mà log đã phơi ra.
 
