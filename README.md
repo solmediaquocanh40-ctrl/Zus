@@ -1,4 +1,9 @@
-# ZaloUnseen 1.0.2
+# ZaloUnseen 1.0.3
+
+## Có gì mới ở 1.0.3
+
+- Sửa lỗi gốc khiến tweak không bao giờ chạy: mã nhận diện của Zalo trên iOS là "vn.com.vng.zingalo" (theo đúng hồ sơ App Store của Apple), không phải "com.vng.zalo" (đó là mã của bản macOS). Bộ lọc chích đã sửa lại cho khớp — các bản trước lọc sai mã nên hệ thống không nạp tweak vào Zalo.
+
 
 ## Có gì mới ở 1.0.2
 

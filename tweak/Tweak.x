@@ -1,4 +1,4 @@
-// ZaloUnseen 1.0.2 — đọc tin nhắn Zalo mà bên kia không thấy "đã xem", tắt "đang nhập...".
+// ZaloUnseen 1.0.3 — đọc tin nhắn Zalo mà bên kia không thấy "đã xem", tắt "đang nhập...".
 //
 // Cơ chế DÒ + CHẶN: Zalo là app đóng, không ai ngoài VNG biết
 // chính xác hàm nào đánh dấu đã đọc. Tweak quét toàn bộ class nằm trong gói Zalo.app,
@@ -239,7 +239,7 @@ static void ZUScanAndHook(void) {
         ZULoadPrefs();
         CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL, ZUPrefsChanged,
                                         ZU_NOTIFY, NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
-        ZULog(@"ZaloUnseen 1.0.2 nạp vào Zalo (bật=%d, unseen=%d, ẩn đang nhập=%d)", gEnabled, gUnseen, gHideTyping);
+        ZULog(@"ZaloUnseen 1.0.3 nạp vào Zalo (bật=%d, unseen=%d, ẩn đang nhập=%d)", gEnabled, gUnseen, gHideTyping);
         // Mốc "đã nạp" ghi thẳng vào kho prefs ngay khi ctor chạy (thêm ở 1.0.1):
         // bằng chứng tweak có chạy trong Zalo hay không, đọc được ở trang Cài đặt
         // lẫn file /var/mobile/Library/Preferences/com.anhdang.zalounseen.plist —

@@ -6,6 +6,7 @@
 	<dict>
 		<key>Bundles</key>
 		<array>
+			<string>vn.com.vng.zingalo</string>
 			<string>com.vng.zalo</string>
 		</array>
 	</dict>
