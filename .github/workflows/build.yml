@@ -67,5 +67,5 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: ZaloUnseen-1.0.5-${{ matrix.name }}
+          name: ZaloUnseen-1.0.6-${{ matrix.name }}
           path: packages/*.deb
