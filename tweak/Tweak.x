@@ -1,13 +1,17 @@
-// ZaloUnseen 1.0.3 — đọc tin nhắn Zalo mà bên kia không thấy "đã xem", tắt "đang nhập...".
+// ZaloUnseen 1.0.4 — đọc tin nhắn Zalo mà bên kia không thấy "đã xem", tắt "đang nhập...".
 //
-// Cơ chế DÒ + CHẶN: Zalo là app đóng, không ai ngoài VNG biết
-// chính xác hàm nào đánh dấu đã đọc. Tweak quét toàn bộ class nằm trong gói Zalo.app,
-// tìm các hàm khớp mẫu "động từ + read/seen/typing" (mark…Read, send…Seen, set…Typing…),
-// kiểm tra kiểu dữ liệu an toàn rồi mới móc bằng MSHookMessageEx. Khi tính năng bật,
-// hàm bị móc KHÔNG được chạy bản gốc: đoạn chat không bị lật trạng thái (danh sách chat
-// giữ chữ đậm như chưa đọc) và máy chủ không nhận được sự kiện đã xem.
-// Mọi ứng viên, móc thành công hay bỏ qua, đều ghi vào log ZaloUnseen.log trong
-// Documents của chính Zalo để vòng sau chỉnh đúng tên hàm thật nếu cần.
+// Cơ chế DANH SÁCH TRẮNG (đổi hẳn ở 1.0.4): chỉ móc đúng các hàm GỬI trạng thái
+// đã xem / đang nhập mà log máy thật của bản 1.0.3 đã chỉ ra — ChatSendSeenDataManager,
+// ChatSocketCmdHelper và các hàm cập nhật "đã xem gần nhất" của ConversationModel.
+// Tổng cộng 21 hàm, không hơn.
+//
+// Vì sao bỏ cơ chế dò theo mẫu của 1.0.0–1.0.3: log 1.0.3 cho thấy mẫu khớp theo
+// chuỗi con đã nổ tung — chữ "read" nằm trong "thread", "already", "ready", "reader"
+// nên 1.162 ứng viên lọt lưới, 877 hàm bị móc, phần lớn là hàm gán dữ liệu
+// (setThreadId:...) khắp app. Chặn các hàm gán đó làm Zalo sập ngay khi mở.
+// Từ 1.0.4: không quét, không khớp mẫu — danh sách cố định, hàm nào không thấy
+// hoặc kiểu dữ liệu không khớp kỳ vọng thì ghi log và bỏ qua, tuyệt đối không
+// đụng vào phần còn lại của app.
 
 #import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>
@@ -83,32 +87,9 @@ static void ZUWriteDiagThrottled(void) {
     ZUWriteDiag();
 }
 
-// ---------------- Nhận diện ứng viên ----------------
-// Trả 0 = không phải, 1 = nhóm đã-xem, 2 = nhóm đang-nhập.
-static int ZUCategorize(NSString *selName) {
-    NSString *s = [selName lowercaseString];
-    static NSArray *prefixSkip = nil, *excl = nil, *verbs = nil;
-    static dispatch_once_t once;
-    dispatch_once(&once, ^{
-        prefixSkip = @[@"get", @"is", @"has", @"can", @"should", @"will", @"did", @"on"];
-        excl = @[@"request", @"fetch", @"load", @"download", @"upload", @"cell", @"layout",
-                 @"draw", @"image", @"color", @"height", @"width", @"size", @"url", @"http",
-                 @"pay", @"emoji", @"sticker", @"avatar", @"animat", @"gesture", @"keyboard",
-                 @"scroll", @"reuse", @"init", @"dealloc"];
-        verbs = @[@"mark", @"send", @"set", @"update", @"report", @"post", @"push", @"commit"];
-    });
-    for (NSString *p in prefixSkip) if ([s hasPrefix:p]) return 0;
-    for (NSString *e in excl) if ([s containsString:e]) return 0;
-    BOOL hasVerb = NO;
-    for (NSString *v in verbs) if ([s containsString:v]) { hasVerb = YES; break; }
-    if (!hasVerb) return 0;
-    if ([s containsString:@"typing"] || [s containsString:@"chatstate"]) return 2;
-    if ([s containsString:@"read"] || [s containsString:@"seen"]) return 1;
-    return 0;
-}
-
-// Chỉ móc hàm trả về void, tối đa 2 tham số thật, kiểu tham số đều là con trỏ/số nguyên
-// (đi qua thanh ghi, chuyển tiếp an toàn). Có float/struct là bỏ qua.
+// ---------------- Kiểm tra kiểu dữ liệu ----------------
+// Hàm thường (tối đa 2 tham số thật): chỉ móc khi trả về void và mọi tham số đều là
+// con trỏ/số nguyên (đi qua thanh ghi, chuyển tiếp an toàn). Có float/struct là bỏ.
 static BOOL ZUEncodingIsSafe(Method m) {
     const char *enc = method_getTypeEncoding(m);
     if (!enc || enc[0] != 'v') return NO;
@@ -121,6 +102,25 @@ static BOOL ZUEncodingIsSafe(Method m) {
         if (c == '@' || c == '#' || c == ':' || c == 'i' || c == 'I' || c == 's' || c == 'S' ||
             c == 'l' || c == 'L' || c == 'q' || c == 'Q' || c == 'c' || c == 'C' || c == 'B' ||
             c == '*' || c == '^') continue;
+        return NO;
+    }
+    return YES;
+}
+
+// Hàm 5 tham số (sendStatusTyping): trên ARM64 tham số nguyên/con trỏ đều nằm trọn
+// trong thanh ghi 64-bit nên chuyển tiếp theo từng ô nhớ là an toàn — với điều kiện
+// mã kiểu KHÔNG chứa float/double/struct/mảng/hợp/bitfield. Quét toàn bộ chuỗi mã
+// kiểu: chỉ cho phép các ký tự của kiểu nguyên/con trỏ/chữ ký số.
+static BOOL ZUEncodingIsSafe5(Method m) {
+    const char *enc = method_getTypeEncoding(m);
+    if (!enc || enc[0] != 'v') return NO;
+    if (method_getNumberOfArguments(m) != 7) return NO;
+    for (const char *p = enc; *p; p++) {
+        char c = *p;
+        if (c == 'v' || c == '@' || c == ':' || c == '#' || c == 'i' || c == 'I' ||
+            c == 's' || c == 'S' || c == 'l' || c == 'L' || c == 'q' || c == 'Q' ||
+            c == 'c' || c == 'C' || c == 'B' || c == '*' || c == '^' ||
+            (c >= '0' && c <= '9')) continue;
         return NO;
     }
     return YES;
@@ -148,32 +148,81 @@ static void ZUFindOrigCat(id self, SEL _cmd, void **outOrig, int *outCat) {
     }
 }
 
-// Hàm thay thế chung cho mọi móc: bật tính năng thì chặn (không chạy gốc), tắt thì chạy gốc.
+static void ZUNoteBlocked(id self, SEL _cmd, int cat) {
+    NSString *desc = [NSString stringWithFormat:@"%@.%@", NSStringFromClass(object_getClass(self)), NSStringFromSelector(_cmd)];
+    if (cat == 1) { gBlockedRead++; gLastEvent = [NSString stringWithFormat:@"chặn đã-xem: %@", desc]; }
+    else { gBlockedTyping++; gLastEvent = [NSString stringWithFormat:@"chặn đang-nhập: %@", desc]; }
+    ZULog(@"ĐÃ CHẶN %@", gLastEvent);
+    ZUWriteDiagThrottled();
+}
+
+// Hàm thay thế chung cho các hàm tối đa 2 tham số: bật tính năng thì chặn
+// (không chạy gốc), tắt thì chạy gốc.
 static void ZUGenericHook(id self, SEL _cmd, id a1, id a2) {
     void *orig = NULL; int cat = 0;
     ZUFindOrigCat(self, _cmd, &orig, &cat);
     BOOL active = gEnabled && ((cat == 1 && gUnseen) || (cat == 2 && gHideTyping));
-    if (active) {
-        NSString *desc = [NSString stringWithFormat:@"%@.%@", NSStringFromClass(object_getClass(self)), NSStringFromSelector(_cmd)];
-        if (cat == 1) { gBlockedRead++; gLastEvent = [NSString stringWithFormat:@"chặn đã-xem: %@", desc]; }
-        else { gBlockedTyping++; gLastEvent = [NSString stringWithFormat:@"chặn đang-nhập: %@", desc]; }
-        ZULog(@"ĐÃ CHẶN %@", gLastEvent);
-        ZUWriteDiagThrottled();
-        return;
-    }
+    if (active) { ZUNoteBlocked(self, _cmd, cat); return; }
     if (orig) ((void (*)(id, SEL, id, id))orig)(self, _cmd, a1, a2);
 }
 
-// ---------------- Quét và móc ----------------
+// Hàm thay thế riêng cho sendStatusTyping (5 tham số nguyên/con trỏ).
+static void ZUHook5(id self, SEL _cmd, void *a1, void *a2, void *a3, void *a4, void *a5) {
+    void *orig = NULL; int cat = 0;
+    ZUFindOrigCat(self, _cmd, &orig, &cat);
+    BOOL active = gEnabled && (cat == 2 && gHideTyping);
+    if (active) { ZUNoteBlocked(self, _cmd, cat); return; }
+    if (orig) ((void (*)(id, SEL, void *, void *, void *, void *, void *))orig)(self, _cmd, a1, a2, a3, a4, a5);
+}
+
+// ---------------- Danh sách trắng (từ log máy thật của 1.0.3) ----------------
+// cat: 1 = đã-xem, 2 = đang-nhập. argc = số tham số thật kỳ vọng (không tính self/_cmd).
+typedef struct {
+    const char *cls;
+    const char *sel;
+    int cat;
+    int argc;
+    BOOL five;
+} ZUEntry;
+
+static const ZUEntry kZUWhitelist[] = {
+    // Lớp gửi "đã xem" lên máy chủ
+    { "ChatSendSeenDataManager", "sendSeenWithChatEntity:", 1, 1, NO },
+    { "ChatSendSeenDataManager", "_sendSeenMessageWithSeenData:messageType:", 1, 2, NO },
+    { "ChatSendSeenDataManager", "sendSeenLastMessageWithThreadIds:withMessageType:", 1, 2, NO },
+    { "ChatSendSeenDataManager", "sendSeenServer", 1, 0, NO },
+    { "ChatSendSeenDataManager", "forceSendSeenServer", 1, 0, NO },
+    { "ChatSendSeenDataManager", "sendSeenServerPeriodicallyIfNeeded", 1, 0, NO },
+    { "ChatSendSeenDataManager", "sendAllFailedSeenMessage", 1, 0, NO },
+    { "ChatSocketCmdHelper", "sendSeenChatACK:withSubCommandType:", 1, 2, NO },
+    { "ChatSocketCmdHelper", "sendSeenGroupChatACKByData:withSubCommandType:", 1, 2, NO },
+    { "ChatSocketCmdHelper", "sendSingleChatDeliveredMessages:isSeen:", 1, 2, NO },
+    { "ChatSocketCmdHelper", "sendE2eeSingleChatDeliveredMessages:isSeen:", 1, 2, NO },
+    { "ChatSocketCmdHelper", "sendGroupChatDeliveredMessages:isSeen:", 1, 2, NO },
+    { "ChatSocketCmdHelper", "sendE2eeGroupChatDeliveredMessages:isSeen:", 1, 2, NO },
+    { "ChatSocketCmdHelper", "sendGetChatSeen", 1, 0, NO },
+    { "ChatSocketCmdHelper", "sendGetGroupSeen", 1, 0, NO },
+    // Lớp cập nhật trạng thái đã xem ngay trong máy (giữ chữ đậm trong danh sách chat)
+    { "ConversationModel", "updateLastSeenWithMessage:type:", 1, 2, NO },
+    { "ConversationModel", "_updateLastSeenWithMessage:type:", 1, 2, NO },
+    { "ConversationModel", "updateLocalLastSeenMessageWithDelay", 1, 0, NO },
+    { "ConversationModel", "clearMentionAndUpdateLastSeenWithDelay:", 1, 1, NO },
+    { "ConversationModel", "setLastSeenObject:", 1, 1, NO },
+    // Lớp gửi "đang nhập..."
+    { "ChatSocketCmdHelper", "sendStatusTyping:withCommand:withSubCommand:withDestType:withGlobalMessageId:", 2, 5, YES },
+};
+static const unsigned kZUWhitelistCount = sizeof(kZUWhitelist) / sizeof(kZUWhitelist[0]);
+
+// ---------------- Lắp móc theo danh sách ----------------
 static long gHookedTotal = 0;
 
-static void ZUInstallHook(Class cls, Method m, BOOL isClass, int cat) {
+static void ZUInstallHook(Class cls, Method m, BOOL isClass, int cat, IMP repl) {
     SEL sel = method_getName(m);
     NSString *key = ZUKeyFor(cls, sel, isClass);
     @synchronized (gOrigs) { if (gOrigs[key]) return; }
     Class target = isClass ? object_getClass(cls) : cls;
     void *orig = NULL;
-    MSHookMessageEx(target, sel, (IMP)ZUGenericHook, (IMP *)&orig);
+    MSHookMessageEx(target, sel, repl, (IMP *)&orig);
     if (!orig) {
         ZULog(@"móc HỎNG: %@ %@", NSStringFromClass(cls), NSStringFromSelector(sel));
         return;
@@ -186,42 +235,37 @@ static void ZUInstallHook(Class cls, Method m, BOOL isClass, int cat) {
     ZULog(@"đã móc [%@] %@.%@", cat == 1 ? @"đã-xem" : @"đang-nhập", NSStringFromClass(cls), NSStringFromSelector(sel));
 }
 
-static void ZUScanClass(Class cls, BOOL isClass, long *candTotal, long *skipTotal) {
-    Class target = isClass ? object_getClass(cls) : cls;
-    unsigned mc = 0;
-    Method *methods = class_copyMethodList(target, &mc);
-    for (unsigned j = 0; j < mc; j++) {
-        Method m = methods[j];
-        NSString *name = NSStringFromSelector(method_getName(m));
-        int cat = ZUCategorize(name);
-        if (!cat) continue;
-        (*candTotal)++;
-        if (!ZUEncodingIsSafe(m)) {
-            (*skipTotal)++;
-            ZULog(@"ứng viên bỏ qua (kiểu dữ liệu không an toàn): %@.%@", NSStringFromClass(cls), name);
+static void ZUInstallWhitelist(void) {
+    for (unsigned i = 0; i < kZUWhitelistCount; i++) {
+        const ZUEntry *e = &kZUWhitelist[i];
+        Class cls = objc_getClass(e->cls);
+        if (!cls) {
+            ZULog(@"chưa thấy class %s (mục %s)", e->cls, e->sel);
             continue;
         }
-        ZUInstallHook(cls, m, isClass, cat);
+        SEL sel = sel_registerName(e->sel);
+        Method m = class_getInstanceMethod(cls, sel);
+        BOOL isClass = NO;
+        if (!m) { m = class_getClassMethod(cls, sel); isClass = YES; }
+        if (!m) {
+            ZULog(@"không thấy hàm %s.%s", e->cls, e->sel);
+            continue;
+        }
+        if ((int)method_getNumberOfArguments(m) - 2 != e->argc) {
+            ZULog(@"bỏ qua (số tham số khác kỳ vọng): %s.%s", e->cls, e->sel);
+            continue;
+        }
+        BOOL safe = e->five ? ZUEncodingIsSafe5(m) : ZUEncodingIsSafe(m);
+        if (!safe) {
+            ZULog(@"bỏ qua (kiểu dữ liệu không an toàn): %s.%s", e->cls, e->sel);
+            continue;
+        }
+        ZUInstallHook(cls, m, isClass, e->cat, e->five ? (IMP)ZUHook5 : (IMP)ZUGenericHook);
     }
-    free(methods);
-}
-
-static void ZUScanAndHook(void) {
-    long candTotal = 0, skipTotal = 0;
-    unsigned count = 0;
-    Class *classes = objc_copyClassList(&count);
-    for (unsigned i = 0; i < count; i++) {
-        Class cls = classes[i];
-        const char *img = class_getImageName(cls);
-        if (!img || !strstr(img, "Zalo.app")) continue;
-        ZUScanClass(cls, NO, &candTotal, &skipTotal);
-        ZUScanClass(cls, YES, &candTotal, &skipTotal);
-    }
-    free(classes);
-    ZULog(@"quét xong: %ld ứng viên, đã móc tổng %ld, bỏ qua vì kiểu dữ liệu %ld", candTotal, gHookedTotal, skipTotal);
-    CFPreferencesSetAppValue((__bridge CFStringRef)ZU_DIAG_CANDIDATES, (__bridge CFPropertyListRef)@(candTotal), (__bridge CFStringRef)ZU_DOMAIN);
+    ZULog(@"danh sách trắng: %u mục, đã móc tổng %ld", kZUWhitelistCount, gHookedTotal);
+    CFPreferencesSetAppValue((__bridge CFStringRef)ZU_DIAG_CANDIDATES, (__bridge CFPropertyListRef)@(kZUWhitelistCount), (__bridge CFStringRef)ZU_DOMAIN);
     CFPreferencesSetAppValue((__bridge CFStringRef)ZU_DIAG_HOOKED, (__bridge CFPropertyListRef)@(gHookedTotal), (__bridge CFStringRef)ZU_DOMAIN);
-    CFPreferencesSetAppValue((__bridge CFStringRef)ZU_DIAG_SKIPPED, (__bridge CFPropertyListRef)@(skipTotal), (__bridge CFStringRef)ZU_DOMAIN);
+    CFPreferencesSetAppValue((__bridge CFStringRef)ZU_DIAG_SKIPPED, (__bridge CFPropertyListRef)@((long)kZUWhitelistCount - gHookedTotal), (__bridge CFStringRef)ZU_DOMAIN);
     CFPreferencesSetAppValue((__bridge CFStringRef)ZU_DIAG_SCAN, (__bridge CFPropertyListRef)[gLogFmt stringFromDate:[NSDate date]], (__bridge CFStringRef)ZU_DOMAIN);
     ZUWriteDiag();
 }
@@ -239,7 +283,7 @@ static void ZUScanAndHook(void) {
         ZULoadPrefs();
         CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL, ZUPrefsChanged,
                                         ZU_NOTIFY, NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
-        ZULog(@"ZaloUnseen 1.0.3 nạp vào Zalo (bật=%d, unseen=%d, ẩn đang nhập=%d)", gEnabled, gUnseen, gHideTyping);
+        ZULog(@"ZaloUnseen 1.0.4 nạp vào Zalo (bật=%d, unseen=%d, ẩn đang nhập=%d)", gEnabled, gUnseen, gHideTyping);
         // Mốc "đã nạp" ghi thẳng vào kho prefs ngay khi ctor chạy (thêm ở 1.0.1):
         // bằng chứng tweak có chạy trong Zalo hay không, đọc được ở trang Cài đặt
         // lẫn file /var/mobile/Library/Preferences/com.anhdang.zalounseen.plist —
@@ -248,9 +292,9 @@ static void ZUScanAndHook(void) {
                                  (__bridge CFPropertyListRef)[gLogFmt stringFromDate:[NSDate date]],
                                  (__bridge CFStringRef)ZU_DOMAIN);
         CFPreferencesAppSynchronize((__bridge CFStringRef)ZU_DOMAIN);
-        // Quét nhiều nhịp: class chat của Zalo có thể nạp muộn sau khi mở app.
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{ ZUScanAndHook(); });
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(8 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{ ZUScanAndHook(); });
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(25 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{ ZUScanAndHook(); });
+        // Lắp móc theo danh sách trắng: 1 giây sau mở app, thử lại ở giây thứ 8 cho
+        // mục nào class nạp muộn (hàm đã móc rồi thì tự bỏ qua).
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{ ZUInstallWhitelist(); });
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(8 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{ ZUInstallWhitelist(); });
     }
 }

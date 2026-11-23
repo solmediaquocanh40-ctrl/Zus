@@ -1,4 +1,13 @@
-# ZaloUnseen 1.0.3
+# ZaloUnseen 1.0.4
+
+## Có gì mới ở 1.0.4
+
+- **Đổi hẳn cơ chế móc: danh sách trắng cố định 21 hàm.** Log máy thật của 1.0.3 phơi bày gốc lỗi làm Zalo văng: cơ chế dò theo mẫu khớp chuỗi con đã nổ tung vì chữ "read" nằm trong "thread", "already", "ready", "reader" — 1.162 ứng viên lọt lưới, 877 hàm bị móc, phần lớn là hàm gán dữ liệu (setThreadId:...) khắp app; chặn các hàm gán đó phá vỡ trạng thái của app ngay khi mở.
+- 1.0.4 không quét, không khớp mẫu nữa: chỉ móc đúng các hàm GỬI trạng thái mà log 1.0.3 đã xác nhận có thật trên Zalo 26.11.02.1 — lớp gửi đã xem (ChatSendSeenDataManager: sendSeenWithChatEntity:, sendSeenServer, forceSendSeenServer...; ChatSocketCmdHelper: sendSeenChatACK, sendSeenGroupChatACK, các hàm delivered kèm cờ isSeen, sendGetChatSeen/sendGetGroupSeen), lớp cập nhật đã xem trong máy (ConversationModel: updateLastSeenWithMessage:type:, setLastSeenObject:... — giữ chữ đậm trong danh sách chat), và hàm gửi đang nhập 5 tham số sendStatusTyping:... của ChatSocketCmdHelper (hàm thay thế riêng, kiểm tra mã kiểu nghiêm ngặt trước khi móc).
+- Mỗi mục đều kiểm tra: class có thật không, hàm có thật không, số tham số có đúng kỳ vọng không, mã kiểu có an toàn không — sai bất kỳ điều nào thì ghi log và bỏ qua. Không đụng vào bất kỳ hàm nào khác của Zalo.
+- Giữ nguyên từ 1.0.3: filter đúng mã Zalo iOS vn.com.vng.zingalo (kèm com.vng.zalo dự phòng), entry Cài đặt không khoá icon, chẩn đoán trong trang Cài đặt.
+
+
 
 ## Có gì mới ở 1.0.3
 

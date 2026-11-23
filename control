@@ -1,6 +1,6 @@
 Package: com.anhdang.zalounseen
 Name: ZaloUnseen
-Version: 1.0.3
+Version: 1.0.4
 Architecture: iphoneos-arm
 Description: Đọc tin nhắn Zalo mà bên kia không thấy "đã xem" — đoạn chat vẫn giữ chữ đậm như chưa đọc — và tắt luôn "đang nhập...". Áp dụng cho mọi người và mọi nhóm, chỉ trên máy của bạn.
 Depends: mobilesubstrate, preferenceloader
