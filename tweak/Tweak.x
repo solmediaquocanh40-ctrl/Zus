@@ -1,4 +1,4 @@
-// ZaloUnseen 1.0.5 — đọc tin nhắn Zalo mà bên kia không thấy "đã xem", tắt "đang nhập...".
+// ZaloUnseen 1.0.6 — đọc tin nhắn Zalo mà bên kia không thấy "đã xem", tắt "đang nhập...".
 //
 // SỬA GỐC VỤ VĂNG CỦA 1.0.4 (đã chứng minh ở mức lệnh máy từ file .ips và đúng
 // file .deb đã cài): hàm thay thế chung ZUGenericHook khai tham số kiểu `id`,
@@ -15,12 +15,29 @@
 // móc của ZaloTools (BVN) mà Quoc đã thử trên đúng bản Zalo này: lớp màn hình chat
 // (BaseChatTVC), lớp xử lý (BaseChatProcessor), lớp quản lý hàng đợi + gửi
 // (ChatSendSeenDataManager, ChatDataManager), lớp socket (ChatSocketCmdHelper)
-// và lớp trạng thái trong máy (ConversationModel). Tổng cộng 27 hàm.
+// và lớp trạng thái trong máy (ConversationModel); 1.0.6 thêm lớp dữ liệu
+// (ChatDataManager, ChatDataFlow, InboxDataManager, ChatProcessor). Tổng 36 hàm.
 // 1.0.5 bỏ hai hàm sendGetChatSeen/sendGetGroupSeen từng có trong danh sách dự
 // thảo: hai hàm đó LẤY danh sách người đã xem tin của CHÍNH mình — không thuộc
 // luồng cần chặn, móc chúng có nguy cơ làm hỏng mục "ai đã xem" trong nhóm.
 // Thêm ghi nhận "lần đầu được gọi" cho từng cửa: vòng thử sau chỉ cần nhìn log
 // là biết cửa nào thật sự chạy khi mở đoạn chat, kể cả cửa được chuyển tiếp.
+//
+// 1.0.6 — HAI THAY ĐỔI TỪ LOG MÁY THẬT CỦA 1.0.5 (phiên 01:20 ngày 11-24):
+// (a) 1.0.5 HẾT VĂNG THẬT nhưng chữ vẫn mất đậm, dù log chứng minh cả 25 cửa
+// lắp được đều chạy và bị chặn khi mở nhóm — kể cả setLastSeenObject: trong
+// máy và forceSendSeenServer ra máy chủ. Kết luận: luồng đánh dấu đã đọc còn
+// chạy qua LỚP DỮ LIỆU (ghi trạng thái đã xem vào giao diện + cơ sở dữ liệu)
+// nằm ngoài 25 cửa. 1.0.6 thêm 9 cửa lớp dữ liệu (tổng 36): họ
+// processUpdateStatus...withUI:withDB: của ChatDataManager / ChatDataFlow /
+// InboxDataManager, processResetUnread... của ChatProcessor, và
+// updateMaxSeenGlobalId: / checkSendClearUnreadType: của ChatDataManager —
+// tên hàm lấy từ danh sách ứng viên trong chính bản Zalo của máy (log 1.0.3).
+// (b) ĐANG NHẬP: log 1.0.5 ghi rõ mã kiểu — sendTyping... trả về B,
+// sendStatusTyping... trả về Q. Nguyên nhân bị từ chối ở 1.0.4 KHÔNG phải ký
+// tự định tính (giả thuyết cũ đã sai): cổng chỉ nhận hàm trả về void. 1.0.6
+// nới cổng cho mọi kiểu trả về vô hướng/con trỏ và mọi hàm thay thế trả lại
+// long long: chuyển tiếp thì trả nguyên giá trị gốc, chặn thì trả 0.
 //
 // Vì sao bỏ cơ chế dò theo mẫu của 1.0.0–1.0.3: log 1.0.3 cho thấy mẫu khớp theo
 // chuỗi con đã nổ tung — chữ "read" nằm trong "thread", "already", "ready", "reader"
@@ -105,20 +122,36 @@ static void ZUWriteDiagThrottled(void) {
 }
 
 // ---------------- Kiểm tra kiểu dữ liệu ----------------
-// Hàm thường (tối đa 2 tham số thật): chỉ móc khi trả về void và mọi tham số đều là
-// con trỏ/số nguyên (đi qua thanh ghi, chuyển tiếp an toàn). Có float/struct là bỏ.
+// Kiểu trả về an toàn cho hàm thay thế trả long long: void, BOOL, mọi số nguyên
+// và mọi con trỏ/object đều về qua thanh ghi x0 (void thì nơi gọi bỏ qua x0),
+// nên giá trị gốc được giữ nguyên bit khi chuyển tiếp, chặn thì trả 0.
+// Loại trừ: float/double (về qua thanh ghi s/d riêng) và struct/mảng/hợp —
+// cơ chế trả khác hẳn, gặp là bỏ qua cửa đó.
+// Bài học từ log 1.0.5: hai hàm đang nhập trả về B và Q đã bị cổng cũ (chỉ nhận
+// void) từ chối oan — đó là nguyên nhân thật của vụ từ chối ở 1.0.4, không phải
+// các ký tự định tính như đã đoán trước đây.
+static BOOL ZUReturnTypeIsSafe(const char *enc) {
+    if (!enc) return NO;
+    char c = enc[0];
+    if (c == 'r' || c == 'n' || c == 'N' || c == 'o' || c == 'O' || c == 'R' || c == 'V') c = enc[1];
+    return (c == 'v' || c == 'B' || c == 'c' || c == 'C' || c == 's' || c == 'S' ||
+            c == 'i' || c == 'I' || c == 'l' || c == 'L' || c == 'q' || c == 'Q' ||
+            c == '@' || c == '#' || c == ':' || c == '*' || c == '^');
+}
+
+// Hàm thường (tối đa 2 tham số thật): kiểu trả về phải qua được cổng trên và
+// mọi tham số đều là con trỏ/số nguyên (đi qua thanh ghi, chuyển tiếp an toàn).
 static BOOL ZUEncodingIsSafe(Method m) {
     const char *enc = method_getTypeEncoding(m);
-    if (!enc || enc[0] != 'v') return NO;
+    if (!ZUReturnTypeIsSafe(enc)) return NO;
     unsigned argc = method_getNumberOfArguments(m);
     if (argc < 2 || argc > 4) return NO;
     for (unsigned i = 2; i < argc; i++) {
         char t[64];
         method_getArgumentType(m, i, t, sizeof(t));
         char c = t[0];
-        // Bỏ qua ký tự định tính của mã kiểu (const/in/out/byref...): chúng chỉ là
-        // chú thích, không ảnh hưởng thanh ghi. Cổng này ở 1.0.4 đã từ chối
-        // sendStatusTyping nhiều khả năng vì đúng các ký tự đó.
+        // Bỏ qua ký tự định tính của mã kiểu (const/in/out/byref...) nếu nó đứng
+        // đầu mã kiểu của tham số: chúng chỉ là chú thích, không ảnh hưởng thanh ghi.
         if (c == 'r' || c == 'n' || c == 'N' || c == 'o' || c == 'O' || c == 'R' || c == 'V') c = t[1];
         if (c == '@' || c == '#' || c == ':' || c == 'i' || c == 'I' || c == 's' || c == 'S' ||
             c == 'l' || c == 'L' || c == 'q' || c == 'Q' || c == 'c' || c == 'C' || c == 'B' ||
@@ -128,19 +161,20 @@ static BOOL ZUEncodingIsSafe(Method m) {
     return YES;
 }
 
-// Hàm nhiều tham số (3–5): trên ARM64 tham số nguyên/con trỏ đều nằm trọn
+// Hàm nhiều tham số (3–6): trên ARM64 tham số nguyên/con trỏ đều nằm trọn
 // trong thanh ghi 64-bit nên chuyển tiếp theo từng ô nhớ là an toàn — với điều kiện
 // mã kiểu KHÔNG chứa float/double/struct/mảng/hợp/bitfield. Quét toàn bộ chuỗi mã
-// kiểu: chỉ cho phép các ký tự của kiểu nguyên/con trỏ/chữ ký số.
+// kiểu: chỉ cho phép các ký tự của kiểu nguyên/con trỏ/chữ ký số, cộng '?' của
+// tham số block (@?) — hai cửa lớp dữ liệu có tham số hoàn-tất dạng block.
 static BOOL ZUEncodingIsSafeN(Method m, int n) {
     const char *enc = method_getTypeEncoding(m);
-    if (!enc || enc[0] != 'v') return NO;
+    if (!ZUReturnTypeIsSafe(enc)) return NO;
     if (method_getNumberOfArguments(m) != (unsigned)(n + 2)) return NO;
     for (const char *p = enc; *p; p++) {
         char c = *p;
         if (c == 'v' || c == '@' || c == ':' || c == '#' || c == 'i' || c == 'I' ||
             c == 's' || c == 'S' || c == 'l' || c == 'L' || c == 'q' || c == 'Q' ||
-            c == 'c' || c == 'C' || c == 'B' || c == '*' || c == '^' ||
+            c == 'c' || c == 'C' || c == 'B' || c == '*' || c == '^' || c == '?' ||
             c == 'r' || c == 'n' || c == 'N' || c == 'o' || c == 'O' || c == 'R' || c == 'V' ||
             (c >= '0' && c <= '9')) continue;
         return NO;
@@ -199,49 +233,73 @@ static void ZUNoteBlocked(id self, SEL _cmd, int cat) {
 }
 
 // Hàm thay thế chung cho các hàm tối đa 2 tham số: bật tính năng thì chặn
-// (không chạy gốc), tắt thì chạy gốc.
+// (không chạy gốc, trả 0), tắt thì chạy gốc và trả NGUYÊN giá trị gốc.
+// Từ 1.0.6 mọi hàm thay thế trả long long: hàm đích trả số nguyên/BOOL/con trỏ
+// đều về qua x0 nên giữ nguyên bit; hàm trả void thì nơi gọi bỏ qua x0.
 // QUAN TRỌNG (gốc vụ văng 1.0.4): tham số PHẢI khai __unsafe_unretained.
 // Khai `id` thường thì ARC coi chúng là strong và tự chèn objc_retain cho từng
 // tham số ngay khi vào hàm — hàm đích nào có tham số là số nguyên (không phải
 // object) sẽ bị retain như một địa chỉ bộ nhớ và sập ngay tại cửa, trước khi
 // kịp chặn hay ghi log (đã chứng minh ở mức lệnh máy từ file .ips của 1.0.4).
-static void ZUGenericHook(__unsafe_unretained id self, SEL _cmd, __unsafe_unretained id a1, __unsafe_unretained id a2) {
+static long long ZUGenericHook(__unsafe_unretained id self, SEL _cmd, __unsafe_unretained id a1, __unsafe_unretained id a2) {
     void *orig = NULL; int cat = 0; NSString *key = nil;
     ZUFindOrigCat(self, _cmd, &orig, &cat, &key);
     ZUNoteCalledOnce(self, _cmd, key);
     BOOL active = gEnabled && ((cat == 1 && gUnseen) || (cat == 2 && gHideTyping));
-    if (active) { ZUNoteBlocked(self, _cmd, cat); return; }
-    if (orig) ((void (*)(__unsafe_unretained id, SEL, __unsafe_unretained id, __unsafe_unretained id))orig)(self, _cmd, a1, a2);
+    if (active) { ZUNoteBlocked(self, _cmd, cat); return 0; }
+    if (orig) return ((long long (*)(__unsafe_unretained id, SEL, __unsafe_unretained id, __unsafe_unretained id))orig)(self, _cmd, a1, a2);
+    return 0;
 }
 
-// Hàm thay thế riêng cho sendStatusTyping (5 tham số nguyên/con trỏ).
-static void ZUHook5(__unsafe_unretained id self, SEL _cmd, void *a1, void *a2, void *a3, void *a4, void *a5) {
+// Hàm thay thế cho các hàm 5 tham số nguyên/con trỏ (sendStatusTyping trả về Q;
+// từ 1.0.6 thêm cửa lớp dữ liệu 5 tham số thuộc nhóm đã-xem — điều kiện kích
+// hoạt phải xét cả hai nhóm như các hàm thay thế khác, nếu chỉ xét nhóm
+// đang-nhập như trước đây thì cửa đã-xem 5 tham số sẽ không bao giờ bị chặn).
+static long long ZUHook5(__unsafe_unretained id self, SEL _cmd, void *a1, void *a2, void *a3, void *a4, void *a5) {
     void *orig = NULL; int cat = 0; NSString *key = nil;
     ZUFindOrigCat(self, _cmd, &orig, &cat, &key);
     ZUNoteCalledOnce(self, _cmd, key);
-    BOOL active = gEnabled && (cat == 2 && gHideTyping);
-    if (active) { ZUNoteBlocked(self, _cmd, cat); return; }
-    if (orig) ((void (*)(__unsafe_unretained id, SEL, void *, void *, void *, void *, void *))orig)(self, _cmd, a1, a2, a3, a4, a5);
+    BOOL active = gEnabled && ((cat == 1 && gUnseen) || (cat == 2 && gHideTyping));
+    if (active) { ZUNoteBlocked(self, _cmd, cat); return 0; }
+    if (orig) return ((long long (*)(__unsafe_unretained id, SEL, void *, void *, void *, void *, void *))orig)(self, _cmd, a1, a2, a3, a4, a5);
+    return 0;
 }
 
 // Hàm thay thế cho các hàm 3 tham số nguyên/con trỏ (cùng nguyên tắc thanh ghi).
-static void ZUHook3(__unsafe_unretained id self, SEL _cmd, void *a1, void *a2, void *a3) {
+static long long ZUHook3(__unsafe_unretained id self, SEL _cmd, void *a1, void *a2, void *a3) {
     void *orig = NULL; int cat = 0; NSString *key = nil;
     ZUFindOrigCat(self, _cmd, &orig, &cat, &key);
     ZUNoteCalledOnce(self, _cmd, key);
     BOOL active = gEnabled && ((cat == 1 && gUnseen) || (cat == 2 && gHideTyping));
-    if (active) { ZUNoteBlocked(self, _cmd, cat); return; }
-    if (orig) ((void (*)(__unsafe_unretained id, SEL, void *, void *, void *))orig)(self, _cmd, a1, a2, a3);
+    if (active) { ZUNoteBlocked(self, _cmd, cat); return 0; }
+    if (orig) return ((long long (*)(__unsafe_unretained id, SEL, void *, void *, void *))orig)(self, _cmd, a1, a2, a3);
+    return 0;
 }
 
 // Hàm thay thế cho các hàm 4 tham số nguyên/con trỏ (gửi đang nhập ở ChatDataManager).
-static void ZUHook4(__unsafe_unretained id self, SEL _cmd, void *a1, void *a2, void *a3, void *a4) {
+static long long ZUHook4(__unsafe_unretained id self, SEL _cmd, void *a1, void *a2, void *a3, void *a4) {
     void *orig = NULL; int cat = 0; NSString *key = nil;
     ZUFindOrigCat(self, _cmd, &orig, &cat, &key);
     ZUNoteCalledOnce(self, _cmd, key);
     BOOL active = gEnabled && ((cat == 1 && gUnseen) || (cat == 2 && gHideTyping));
-    if (active) { ZUNoteBlocked(self, _cmd, cat); return; }
-    if (orig) ((void (*)(__unsafe_unretained id, SEL, void *, void *, void *, void *))orig)(self, _cmd, a1, a2, a3, a4);
+    if (active) { ZUNoteBlocked(self, _cmd, cat); return 0; }
+    if (orig) return ((long long (*)(__unsafe_unretained id, SEL, void *, void *, void *, void *))orig)(self, _cmd, a1, a2, a3, a4);
+    return 0;
+}
+
+// Hàm thay thế cho các hàm 6 tham số nguyên/con trỏ (mới ở 1.0.6, cho cửa lớp
+// dữ liệu InboxDataManager.processUpdateStatusInboxEntityThreadId:msgType:
+// newStatus:seenTime:updateUI:updateDB:). 6 tham số thật vẫn nằm trọn trong
+// thanh ghi x2–x7; từ 7 tham số trở lên tham số tràn xuống ngăn xếp nên KHÔNG
+// dùng mẫu này — đó là lý do cửa 7 tham số của InboxDataManager tạm chưa móc.
+static long long ZUHook6(__unsafe_unretained id self, SEL _cmd, void *a1, void *a2, void *a3, void *a4, void *a5, void *a6) {
+    void *orig = NULL; int cat = 0; NSString *key = nil;
+    ZUFindOrigCat(self, _cmd, &orig, &cat, &key);
+    ZUNoteCalledOnce(self, _cmd, key);
+    BOOL active = gEnabled && ((cat == 1 && gUnseen) || (cat == 2 && gHideTyping));
+    if (active) { ZUNoteBlocked(self, _cmd, cat); return 0; }
+    if (orig) return ((long long (*)(__unsafe_unretained id, SEL, void *, void *, void *, void *, void *, void *))orig)(self, _cmd, a1, a2, a3, a4, a5, a6);
+    return 0;
 }
 
 // ---------------- Danh sách trắng (log máy thật 1.0.3 + điểm móc ZaloTools đã kiểm chứng) ----------------
@@ -284,6 +342,21 @@ static const ZUEntry kZUWhitelist[] = {
     { "ConversationModel", "updateLocalLastSeenMessageWithDelay", 1, 0 },
     { "ConversationModel", "clearMentionAndUpdateLastSeenWithDelay:", 1, 1 },
     { "ConversationModel", "setLastSeenObject:", 1, 1 },
+    // Lớp dữ liệu: ghi trạng thái đã xem thẳng vào giao diện + cơ sở dữ liệu —
+    // đường rò mà log 1.0.5 đã chứng minh (cả 25 cửa trên đều chặn mà chữ vẫn
+    // mất đậm). Tên hàm lấy từ danh sách ứng viên trong chính bản Zalo của máy
+    // (log 1.0.3). Cửa InboxDataManager 7 tham số (processUpdateStatusInbox-
+    // EntityForThreadId:globalId:clientId:messageType:newStatus:updateUI:
+    // updateDB:) tạm chưa móc — xem ghi chú ở ZUHook6.
+    { "ChatDataManager", "processUpdateStatusChatSeenChatGroup:withNewStatusSeen:withUI:withDB:", 1, 4 },
+    { "ChatDataFlow", "processUpdateStatusSeenChatGroup:withNewStatusSeen:withUI:withDB:", 1, 4 },
+    { "InboxDataManager", "processUpdateStatusInboxEntityThreadId:msgType:withNewStatus:withUI:withDB:", 1, 5 },
+    { "InboxDataManager", "processUpdateStatusInboxEntityThreadId:msgType:newStatus:seenTime:updateUI:updateDB:", 1, 6 },
+    { "InboxDataManager", "processDecreaseUnreadOfThread:withType:shouldUpdateDB:shouldUpdateUI:", 1, 4 },
+    { "ChatProcessor", "processResetUnreadWithSeenData:msgType:withCompletion:", 1, 3 },
+    { "ChatProcessor", "processResetUnreadOfThread:msgType:msgMarker:", 1, 3 },
+    { "ChatDataManager", "updateMaxSeenGlobalId:withMessageType:withCompletion:", 1, 3 },
+    { "ChatDataManager", "checkSendClearUnreadType:withInboxEntity:messageType:withToUserId:", 1, 4 },
     // Lớp gửi "đang nhập..."
     { "ChatDataManager", "sendTypingWithType:toUserId:messageType:isE2eeChat:", 2, 4 },
     { "ChatSocketCmdHelper", "sendStatusTyping:withCommand:withSubCommand:withDestType:withGlobalMessageId:", 2, 5 },
@@ -336,7 +409,8 @@ static void ZUInstallWhitelist(void) {
         if (e->argc <= 2)      { safe = ZUEncodingIsSafe(m);        repl = (IMP)ZUGenericHook; }
         else if (e->argc == 3) { safe = ZUEncodingIsSafeN(m, 3);    repl = (IMP)ZUHook3; }
         else if (e->argc == 4) { safe = ZUEncodingIsSafeN(m, 4);    repl = (IMP)ZUHook4; }
-        else                   { safe = ZUEncodingIsSafeN(m, 5);    repl = (IMP)ZUHook5; }
+        else if (e->argc == 5) { safe = ZUEncodingIsSafeN(m, 5);    repl = (IMP)ZUHook5; }
+        else                   { safe = ZUEncodingIsSafeN(m, 6);    repl = (IMP)ZUHook6; }
         if (!safe) {
             ZULog(@"bỏ qua (kiểu dữ liệu không an toàn): %s.%s enc=%s", e->cls, e->sel, method_getTypeEncoding(m));
             continue;
@@ -365,7 +439,7 @@ static void ZUInstallWhitelist(void) {
         ZULoadPrefs();
         CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL, ZUPrefsChanged,
                                         ZU_NOTIFY, NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
-        ZULog(@"ZaloUnseen 1.0.5 nạp vào Zalo (bật=%d, unseen=%d, ẩn đang nhập=%d)", gEnabled, gUnseen, gHideTyping);
+        ZULog(@"ZaloUnseen 1.0.6 nạp vào Zalo (bật=%d, unseen=%d, ẩn đang nhập=%d)", gEnabled, gUnseen, gHideTyping);
         // Mốc "đã nạp" ghi thẳng vào kho prefs ngay khi ctor chạy (thêm ở 1.0.1):
         // bằng chứng tweak có chạy trong Zalo hay không, đọc được ở trang Cài đặt
         // lẫn file /var/mobile/Library/Preferences/com.anhdang.zalounseen.plist —

@@ -1,4 +1,11 @@
-# ZaloUnseen 1.0.5
+# ZaloUnseen 1.0.6
+
+## Có gì mới ở 1.0.6
+
+- **Chặn thêm lớp dữ liệu — đường rò mà log 1.0.5 đã chỉ mặt.** Bản 1.0.5 hết văng thật, và log chứng minh cả 25 cửa lắp được đều chạy + bị chặn khi mở nhóm (kể cả hàm ghi mốc đã xem trong máy và hàm xả hàng đợi lên máy chủ), vậy mà chữ vẫn mất đậm: luồng đánh dấu đã đọc còn đi qua lớp dữ liệu ghi trạng thái đã xem vào giao diện + cơ sở dữ liệu. 1.0.6 thêm 9 cửa ở lớp này (tổng 36): họ processUpdateStatus...withUI:withDB: của ChatDataManager / ChatDataFlow / InboxDataManager, processResetUnread... của ChatProcessor, updateMaxSeenGlobalId: và checkSendClearUnreadType: của ChatDataManager — tên hàm lấy từ danh sách ứng viên trong chính bản Zalo trên máy (log 1.0.3). Một cửa anh em 7 tham số của InboxDataManager tạm chưa móc (tham số thứ 7 nằm trên ngăn xếp, cần kỹ thuật chuyển tiếp khác); hai cửa 5 và 6 tham số của nó nhiều khả năng phủ cùng luồng.
+- **Đang nhập: sửa đúng nguyên nhân bị từ chối.** Log 1.0.5 ghi rõ mã kiểu: hai hàm đang nhập trả về số (B và Q) chứ không phải void — cổng kiểm tra cũ chỉ nhận hàm trả về void nên từ chối oan (giả thuyết ký tự định tính trước đây là sai). Nay cổng nhận mọi kiểu trả về vô hướng/con trỏ, và mọi hàm thay thế trả lại giá trị: chuyển tiếp thì trả nguyên giá trị gốc, chặn thì trả 0.
+- **Hàm thay thế 6 tham số mới** cho cửa lớp dữ liệu 6 tham số; điều kiện kích hoạt của hàm thay thế 5 tham số được tổng quát hoá cho cả hai nhóm (trước đây chỉ xét nhóm đang nhập — cửa đã-xem 5 tham số sẽ không bao giờ bị chặn nếu giữ nguyên).
+- Giữ nguyên: log "lần đầu được gọi" cho từng cửa, bộ đếm chẩn đoán trong trang Cài đặt, filter vn.com.vng.zingalo.
 
 ## Có gì mới ở 1.0.5
 
@@ -8,6 +15,7 @@
 - **Log thêm dòng "lần đầu được gọi" cho từng cửa:** mở đoạn chat mà cửa nào chạy là log có bằng chứng ngay, kể cả khi cửa đó đang được chuyển tiếp — vòng thử này sẽ chỉ đích danh cửa còn rò, nếu còn.
 - Mỗi mục đều kiểm tra: class có thật không, hàm có thật không, số tham số có đúng kỳ vọng không, mã kiểu có an toàn không — sai bất kỳ điều nào thì ghi log và bỏ qua. Không đụng vào bất kỳ hàm nào khác của Zalo.
 - Giữ nguyên từ 1.0.3: filter đúng mã Zalo iOS vn.com.vng.zingalo (kèm com.vng.zalo dự phòng), entry Cài đặt không khoá icon, chẩn đoán trong trang Cài đặt.
+- **Kết quả thử trên máy (11-24, log phiên 01:20):** hết văng thật khi mở đoạn chat — gốc ARC đã cắt trúng. 25/27 cửa lắp được và đều chặn thật khi mở nhóm (cửa màn hình chat bắt qua chuỗi class cha từ BaseChatTVC, setLastSeenObject:/clearMention... của model nhóm, forceSendSeenServer, addChatSeen 23 lần lúc đồng bộ). Chữ vẫn mất đậm → phát hiện đường lớp dữ liệu (xem mục 1.0.6). Hai hàm đang nhập vẫn bị từ chối, log ghi rõ mã kiểu trả về B/Q — đầu mối để sửa ở 1.0.6.
 
 ## Có gì mới ở 1.0.4 (bản đã build và thử trên máy)
 
